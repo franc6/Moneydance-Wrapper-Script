@@ -22,6 +22,8 @@ All of the dependencies are either part of the base FreeBSD system, or can be in
 1. shells/zsh
 2. java/bootstrap-openjdk11 (so you can build openjdk12)
 3. java/openjdk12
+4. x11-toolkits/swt (for building OpenJFX)
+5. OpenJFX (this one isn't in ports)
 
-OK, installing openjdk12 for use with Moneydance is NOT simple, because you also need to install OpenJFX.  There are instructions on the 'net for how to do this, but none of them are quite for FreeBSD.  You can use the patch openjfx.patch to patch OpenJFX for building on FreeBSD.  There are a few other dependencies for OpenJFX.  Additionally, you'll need to install openjdk12 twice -- once before you build OpenJFX, and once after OpenJFX is installed.  And you have modify the Makefile for java/openjdk12, so it knows where to find the OpenJFX modules, when building it the second time.  Simply add "--with-import-modules=/home/me/openjfx/rt/build/sdk/lib" to CONFIGURE_ARGS, before you build java/openjdk12 the second time.
+OK, so installing openjdk12 for use with Moneydance is NOT simple, because you also need to install OpenJFX.  There are instructions on the 'net for how to do this, but none of them are quite right for FreeBSD.  You can use the patch openjfx.patch to patch OpenJFX for building on FreeBSD, by following the instructions for building on Linux, up to the point of building and installing OpenJDK.  Once you reach that point, you have modify the Makefile for java/openjdk12, so it knows where to find the OpenJFX modules.  Simply add "--with-import-modules=/home/me/openjfx/rt/build/modular-sdk" to CONFIGURE_ARGS, then run "make clean ; make && make deinstall && make reinstall" to re-build and re-install OpenJDK 12.
 
