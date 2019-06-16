@@ -2,7 +2,6 @@
 Wrapper script for Moneydance on FreeBSD
 
 This script will do the following:
-
 1. Run dropbox-api to synchronize a Dropbox folder for Moneydance.  You need to configure which directory to use, as there's no official Dropbox client for FreeBSD.
 2. Run Moneydance
 3. Run dropbox-api to synchronize again.
@@ -24,11 +23,5 @@ All of the dependencies are either part of the base FreeBSD system, or can be in
 2. java/bootstrap-openjdk11 (so you can build openjdk12)
 3. java/openjdk12
 
-OK, installing openjdk12 for use with Moneydance is NOT simple, because you
-also need to install OpenJFX.  There are instructions on the 'net for how to do
-this, but none of them are quite for FreeBSD.  I really need to post my patches
-somewhere for this -- you can almost pretend you're building for Linux, but not
-quite. :)  Additionally, you'll need to install openjdk12 twice -- once before
-you build OpenJFX, and once after OpenJFX is installed.  And you have modify
-the makefile for java/openjdk12, so it knows where to find the OpenJFX modules,
-when building it the second time.
+OK, installing openjdk12 for use with Moneydance is NOT simple, because you also need to install OpenJFX.  There are instructions on the 'net for how to do this, but none of them are quite for FreeBSD.  You can use the patch openjfx.patch to patch OpenJFX for building on FreeBSD.  There are a few other dependencies for OpenJFX.  Additionally, you'll need to install openjdk12 twice -- once before you build OpenJFX, and once after OpenJFX is installed.  And you have modify the Makefile for java/openjdk12, so it knows where to find the OpenJFX modules, when building it the second time.  Simply add "--with-import-modules=/home/me/openjfx/rt/build/sdk/lib" to CONFIGURE_ARGS, before you build java/openjdk12 the second time.
+

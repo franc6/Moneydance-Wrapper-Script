@@ -1,0 +1,1340 @@
+diff -r e64f75359064 build.gradle
+--- a/build.gradle	Tue Mar 26 04:38:34 2019 -0700
++++ b/build.gradle	Sat Jun 15 21:39:20 2019 -0400
+@@ -295,6 +295,7 @@
+ ext.IS_MAC = OS_NAME.contains("mac") || OS_NAME.contains("darwin")
+ ext.IS_WINDOWS = OS_NAME.contains("windows")
+ ext.IS_LINUX = OS_NAME.contains("linux")
++ext.IS_FREEBSD = OS_NAME.contains("freebsd")
+ 
+ ext.MAVEN_GROUP_ID = "org.openjfx"
+ 
+@@ -302,13 +303,15 @@
+ // at present building on PI is not supported, but we would only need to make
+ // some changes on assumptions on what should be built (like SWT / Swing) and
+ // such and we could probably make it work.
+-if (!IS_MAC && !IS_WINDOWS && !IS_LINUX) fail("Unsupported build OS ${OS_NAME}")
++if (!IS_MAC && !IS_WINDOWS && !IS_LINUX && !IS_FREEBSD) fail("Unsupported build OS ${OS_NAME}")
+ if (IS_WINDOWS && OS_ARCH != "x86" && OS_ARCH != "amd64") {
+     fail("Unknown and unsupported build architecture: $OS_ARCH")
+ } else if (IS_MAC && OS_ARCH != "x86_64") {
+     fail("Unknown and unsupported build architecture: $OS_ARCH")
+ } else if (IS_LINUX && OS_ARCH != "i386" && OS_ARCH != "amd64") {
+     fail("Unknown and unsupported build architecture: $OS_ARCH")
++} else if (IS_FREEBSD && OS_ARCH != "amd64") {
++    fail("Unknown and unsupported build architecture: $OS_ARCH")
+ }
+ 
+ 
+@@ -377,12 +380,12 @@
+ 
+ // BUILD_LIBAV_STUBS specifies whether to download and build libav/ffmpeg libraries
+ defineProperty("BUILD_LIBAV_STUBS", "false")
+-ext.IS_BUILD_LIBAV_STUBS = IS_LINUX ? Boolean.parseBoolean(BUILD_LIBAV_STUBS) : false
++ext.IS_BUILD_LIBAV_STUBS = (IS_LINUX || IS_FREEBSD) ? Boolean.parseBoolean(BUILD_LIBAV_STUBS) : false
+ 
+ // BUILD_WORKING_LIBAV specifies whether to build libav/ffmpeg libraries with
+ // decoder, demuxer, etc. required to run media. Valid only if BUILD_LIBAV_STUBS is true.
+ defineProperty("BUILD_WORKING_LIBAV", "false")
+-ext.IS_BUILD_WORKING_LIBAV = IS_LINUX ? Boolean.parseBoolean(BUILD_WORKING_LIBAV) : false
++ext.IS_BUILD_WORKING_LIBAV = (IS_LINUX || IS_FREEBSD) ? Boolean.parseBoolean(BUILD_WORKING_LIBAV) : false
+ 
+ // COMPILE_PANGO specifies whether to build javafx_font_pango.
+ defineProperty("COMPILE_PANGO", "${IS_LINUX}")
+@@ -406,7 +409,7 @@
+     IS_WINDOWS && IS_64 ? "org.eclipse.swt.win32.win32.x86_64_3.105.3.v20170228-0512" :
+     IS_WINDOWS && !IS_64 ? "org.eclipse.swt.win32.win32.x86_3.105.3.v20170228-0512" :
+     IS_LINUX && IS_64 ? "org.eclipse.swt.gtk.linux.x86_64_3.105.3.v20170228-0512" :
+-    IS_LINUX && !IS_64 ? "org.eclipse.swt.gtk.linux.x86_3.105.3.v20170228-0512" : ""
++    IS_LINUX && !IS_64 ? "org.eclipse.swt.gtk.linux.x86_3.105.3.v20170228-0512" : IS_FREEBSD && IS_64 ? "org.eclipse.swt.gtk.freebsd.x86_64-0512" : ""
+ 
+ // Specifies whether to run full tests (true) or smoke tests (false)
+ defineProperty("FULL_TEST", "false")
+@@ -551,7 +554,7 @@
+ // Check whether the COMPILE_TARGETS property has been specified (if so, it was done by
+ // the user and not by this script). If it has not been defined then default
+ // to building the normal desktop build for this machine
+-project.ext.set("defaultHostTarget", IS_MAC ? "mac" : IS_WINDOWS ? "win" : IS_LINUX ? "linux" : "");
++project.ext.set("defaultHostTarget", IS_MAC ? "mac" : IS_WINDOWS ? "win" : IS_LINUX ? "linux" : IS_FREEBSD ? "freebsd" : "");
+ defineProperty("COMPILE_TARGETS", "$defaultHostTarget")
+ 
+ // Flag indicating whether to import cross compile tools
+@@ -697,7 +700,7 @@
+                 def File pkgdir = file("$destdir/$basename")
+ 
+                 if (pkgname.endsWith(".tgz") || pkgname.endsWith("tar.gz")) {
+-                    if (IS_LINUX || IS_MAC) {
++                    if (IS_LINUX || IS_MAC || IS_FREEBSD) {
+                         // use native tar to support symlinks
+                         pkgdir.mkdirs()
+                         exec {
+@@ -1174,6 +1177,7 @@
+     if (!targetProperties.containsKey('includeEGL')) targetProperties.includeEGL = false
+ 
+     if (!targetProperties.containsKey('includeGTK')) targetProperties.includeGTK = IS_LINUX
++    if (!targetProperties.containsKey('includeGTK')) targetProperties.includeGTK = IS_FREEBSD
+ 
+     if (!targetProperties.containsKey('modLibDest')) targetProperties.modLibDest = targetProperties.libDest
+ 
+@@ -1563,10 +1567,10 @@
+                 maven(MavenPublication) {
+                     artifactId = "javafx-${project.name}"
+ 
+-                    artifact project.tasks."moduleEmptyPublicationJar$t.capital"
+-                    artifact project.tasks."modularPublicationJar$t.capital" {
+-                        classifier "$t.name"
+-                    }
++                //    artifact project.tasks."moduleEmptyPublicationJar$t.capital"
++                //    artifact project.tasks."modularPublicationJar$t.capital" {
++                //        classifier "$t.name"
++                //    }
+ 
+                     pom.withXml {
+                         Node parent = asNode().appendNode("parent")
+@@ -1729,7 +1733,8 @@
+         repositories {
+             mavenCentral()
+             ivy {
+-                url "http://download.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/plugins/"
++                url "/usr/local/share/java/classes"
++                //url "http://download.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/plugins/"
+                 layout "pattern", {
+                     artifact "[artifact].[ext]"
+                 }
+@@ -2684,7 +2689,7 @@
+ 
+             buildNative.dependsOn buildPlugins
+ 
+-            if (t.name == "linux") {
++            if ((t.name == "linux") || (t.name == "freebsd")) {
+                 // Pre-defined command line arguments
+                 def cfgCMDArgs = ["sh", "configure"]
+                 def commonCfgArgs = ["--enable-shared", "--disable-debug", "--disable-static", "--disable-yasm", "--disable-doc", "--disable-programs", "--disable-everything"]
+@@ -2948,13 +2953,13 @@
+                     doLast {
+                         if (IS_BUILD_LIBAV_STUBS) {
+                             project.ext.libav = [:]
+-                            project.ext.libav.basedir = "${buildDir}/native/linux/libav/libav"
++                            project.ext.libav.basedir = "${buildDir}/native/${t.name}/libav/libav"
+                             project.ext.libav.versions = [ "53", "54", "55", "56", "57" ]
+                             project.ext.libav.libavffmpeg = [:]
+-                            project.ext.libav.libavffmpeg.basedir = "${buildDir}/native/linux/libavffmpeg/libav"
++                            project.ext.libav.libavffmpeg.basedir = "${buildDir}/native/${t.name}/libavffmpeg/libav"
+                             project.ext.libav.libavffmpeg.versions = [ "56" ]
+                             project.ext.libav.ffmpeg = [:]
+-                            project.ext.libav.ffmpeg.basedir = "${buildDir}/native/linux/ffmpeg/ffmpeg"
++                            project.ext.libav.ffmpeg.basedir = "${buildDir}/native/${t.name}/ffmpeg/ffmpeg"
+                             project.ext.libav.ffmpeg.versions = [ "57" ]
+ 
+                             project.ext.libav.versions.each { version ->
+@@ -2962,7 +2967,7 @@
+                                 File dir = file(libavDir)
+                                 if (dir.exists()) {
+                                     exec {
+-                                        commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/linux/avplugin")
++                                        commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/${t.name}/avplugin")
+                                         args("CC=${mediaProperties.compiler}", "LINKER=${mediaProperties.linker}",
+                                              "OUTPUT_DIR=${nativeOutputDir}", "BUILD_TYPE=${buildType}",
+                                              "BASE_NAME=avplugin", "VERSION=${version}", "LIBAV_DIR=${libavDir}",
+@@ -2976,7 +2981,7 @@
+                                 File dir = file(libavDir)
+                                 if (dir.exists()) {
+                                     exec {
+-                                        commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/linux/avplugin")
++                                        commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/${t.name}/avplugin")
+                                         args("CC=${mediaProperties.compiler}", "LINKER=${mediaProperties.linker}",
+                                              "OUTPUT_DIR=${nativeOutputDir}", "BUILD_TYPE=${buildType}",
+                                              "BASE_NAME=avplugin", "VERSION=${version}", "LIBAV_DIR=${libavDir}",
+@@ -2990,7 +2995,7 @@
+                                 File dir = file(libavDir)
+                                 if (dir.exists()) {
+                                     exec {
+-                                        commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/linux/avplugin")
++                                        commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/${t.name}/avplugin")
+                                         args("CC=${mediaProperties.compiler}", "LINKER=${mediaProperties.linker}",
+                                              "OUTPUT_DIR=${nativeOutputDir}", "BUILD_TYPE=${buildType}",
+                                              "BASE_NAME=avplugin", "VERSION=${version}", "LIBAV_DIR=${libavDir}",
+@@ -3001,7 +3006,7 @@
+                         } else {
+                             // Building fxavcodec plugin (libav plugin)
+                             exec {
+-                                commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/linux/avplugin")
++                                commandLine ("make", "${makeJobsFlag}", "-C", "${nativeSrcDir}/gstreamer/projects/${t.name}/avplugin")
+                                 args("CC=${mediaProperties.compiler}", "LINKER=${mediaProperties.linker}",
+                                      "OUTPUT_DIR=${nativeOutputDir}", "BUILD_TYPE=${buildType}",
+                                      "BASE_NAME=avplugin", IS_64 ? "ARCH=x64" : "ARCH=x32")
+@@ -3182,7 +3187,7 @@
+     compileTargets { t ->
+         def targetProperties = project.rootProject.ext[t.upper]
+         def webkitProperties = targetProperties.webkit
+-        def classifier = (t.name != "linux" && t.name != "win") ? t.name :
++        def classifier = (t.name != "linux" && t.name != "freebsd" && t.name != "win") ? t.name :
+                           IS_64 ? "${t.name}-amd64" : "${t.name}-i586"
+ 
+         def webkitOutputDir = cygpath("$buildDir/${t.name}")
+@@ -3211,8 +3216,12 @@
+                         environment(WINDOWS_NATIVE_COMPILE_ENVIRONMENT)
+                     } else if (t.name == "mac") {
+                         cmakeArgs = " $cmakeArgs -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_MIN_VERSION -DCMAKE_OSX_SYSROOT=$MACOSX_SDK_PATH"
+-                    } else if (t.name == "linux") {
+-                        cmakeArgs = " $cmakeArgs -DCMAKE_SYSTEM_NAME=Linux"
++                    } else if (t.name == "linux" || t.name == "freebsd") {
++                        if (t.name == "linux") {
++                            cmakeArgs = " $cmakeArgs -DCMAKE_SYSTEM_NAME=Linux"
++                        } else {
++                            cmakeArgs = " $cmakeArgs -DCMAKE_SYSTEM_NAME=FreeBSD"
++                        }
+                         if (IS_64) {
+                             cmakeArgs = "$cmakeArgs -DCMAKE_SYSTEM_PROCESSOR=x86_64"
+                         } else {
+@@ -3868,7 +3877,9 @@
+         enabled = COMPILE_SWT
+         group = "Basic"
+         description = "Creates the javafx-swt.jar for the $t.name target"
+-        archiveName = "${project(":swt").buildDir}/libs/javafx-swt.jar";
++        //archiveName = "${project(":swt").buildDir}/libs/javafx-swt.jar";
++        archiveName = "javafx-swt.jar";
++        destinationDir = new File("${project(":swt").buildDir}/libs")
+         includeEmptyDirs = false
+         from("${project(":swt").buildDir}/classes/java/main");
+         include("**/javafx/embed/swt/**")
+@@ -4684,7 +4695,7 @@
+                     // OSX media natives
+                     [ "jfxmedia_qtkit", "jfxmedia_avf", "glib-lite" ].each { name ->
+                         from ("${mediaProject.buildDir}/native/${t.name}/${mediaBuildType}/${library(name)}") }
+-                } else if (t.name == "linux") {
++                } else if (t.name == "linux" || t.name == "freebsd") {
+                     from("${mediaProject.buildDir}/native/${t.name}/${mediaBuildType}") { include "libavplugin*.so" }
+                 } else from ("${mediaProject.buildDir}/native/${t.name}/${mediaBuildType}/${library("glib-lite")}")
+             } else {
+@@ -4697,7 +4708,7 @@
+                     // copy libjfxmedia_{avf,qtkit}.dylib if they exist
+                     [ "jfxmedia_qtkit", "jfxmedia_avf", "glib-lite" ].each { name ->
+                         from ("$MEDIA_STUB/${library(name)}") }
+-                } else if (t.name == "linux") {
++                } else if (t.name == "linux" || t.name == "freebsd") {
+                     from(MEDIA_STUB) { include "libavplugin*.so" }
+                 }
+                 else if (t.name != "android"  && t.name != "dalvik" ) {
+diff -r e64f75359064 buildSrc/src/main/groovy/com/sun/javafx/gradle/NativeCompileTask.groovy
+--- a/buildSrc/src/main/groovy/com/sun/javafx/gradle/NativeCompileTask.groovy	Tue Mar 26 04:38:34 2019 -0700
++++ b/buildSrc/src/main/groovy/com/sun/javafx/gradle/NativeCompileTask.groovy	Sat Jun 15 21:39:20 2019 -0400
+@@ -102,7 +102,7 @@
+         updateFiles();
+         def source = project.files(allFiles);
+         boolean forceCompile = false;
+-        final Set<File> files = new HashSet<File>();
++        Set<File> files = new HashSet<File>();
+         source.each { File file ->
+             final Map fileData = dependencies.get(file.toString());
+             final boolean isModified = fileData == null ||
+diff -r e64f75359064 modules/javafx.graphics/src/main/native-glass/gtk/glass_evloop.cpp
+--- a/modules/javafx.graphics/src/main/native-glass/gtk/glass_evloop.cpp	Tue Mar 26 04:38:34 2019 -0700
++++ b/modules/javafx.graphics/src/main/native-glass/gtk/glass_evloop.cpp	Sat Jun 15 21:39:20 2019 -0400
+@@ -25,64 +25,61 @@
+ #include "glass_evloop.h"
+ 
+ #include <glib.h>
++#ifdef __linux__
+ #include <malloc.h>
++#else
++#include <stdlib.h>
++#endif
+ 
+-static GSList * evloopHookList;
++static GSList *evloopHookList;
+ 
+-#define GEVL_HOOK_REGISTRATION_IMPL(ptr) ((GevlHookRegistrationImpl *) ptr)
++#define GEVL_HOOK_REGISTRATION_IMPL(ptr) ((GevlHookRegistrationImpl *)ptr)
+ 
+ typedef struct _GevlHookRegistrationImpl {
+-    GevlHookFunction hookFn;
+-    void * data;
++   GevlHookFunction hookFn;
++   void *data;
+ } GevlHookRegistrationImpl;
+ 
+-void
+-glass_evloop_initialize() {
+-}
++void glass_evloop_initialize() {}
+ 
+-void
+-glass_evloop_finalize() {
+-    GSList * ptr = evloopHookList;
+-    while (ptr != NULL) {
+-        free(ptr->data);
+-        ptr = g_slist_next(ptr);
+-    }
++void glass_evloop_finalize() {
++   GSList *ptr = evloopHookList;
++   while (ptr != NULL) {
++      free(ptr->data);
++      ptr = g_slist_next(ptr);
++   }
+ 
+-    g_slist_free(evloopHookList);
+-    evloopHookList = NULL;
++   g_slist_free(evloopHookList);
++   evloopHookList = NULL;
+ }
+ 
+-void
+-glass_evloop_call_hooks(GdkEvent * event) {
+-    GSList * ptr = evloopHookList;
+-    while (ptr != NULL) {
+-        GevlHookRegistrationImpl * hookReg =
+-                GEVL_HOOK_REGISTRATION_IMPL(ptr->data);
+-        hookReg->hookFn(event, hookReg->data);
++void glass_evloop_call_hooks(GdkEvent *event) {
++   GSList *ptr = evloopHookList;
++   while (ptr != NULL) {
++      GevlHookRegistrationImpl *hookReg =
++          GEVL_HOOK_REGISTRATION_IMPL(ptr->data);
++      hookReg->hookFn(event, hookReg->data);
+ 
+-        ptr = g_slist_next(ptr);
+-    }
++      ptr = g_slist_next(ptr);
++   }
+ }
+ 
+-GevlHookRegistration
+-glass_evloop_hook_add(GevlHookFunction hookFn, void * data) {
+-    GevlHookRegistrationImpl * hookReg =
+-            (GevlHookRegistrationImpl *)
+-                malloc(sizeof(GevlHookRegistrationImpl));
++GevlHookRegistration glass_evloop_hook_add(GevlHookFunction hookFn,
++                                           void *data) {
++   GevlHookRegistrationImpl *hookReg =
++       (GevlHookRegistrationImpl *)malloc(sizeof(GevlHookRegistrationImpl));
+ 
+-    if (hookReg != NULL) {
+-        hookReg->hookFn = hookFn;
+-        hookReg->data = data;
++   if (hookReg != NULL) {
++      hookReg->hookFn = hookFn;
++      hookReg->data = data;
+ 
+-        evloopHookList = g_slist_prepend(evloopHookList, hookReg);
+-    }
++      evloopHookList = g_slist_prepend(evloopHookList, hookReg);
++   }
+ 
+-    return hookReg;
++   return hookReg;
+ }
+ 
+-void
+-glass_evloop_hook_remove(GevlHookRegistration hookReg) {
+-    evloopHookList = g_slist_remove(evloopHookList, hookReg);
+-    free(hookReg);
++void glass_evloop_hook_remove(GevlHookRegistration hookReg) {
++   evloopHookList = g_slist_remove(evloopHookList, hookReg);
++   free(hookReg);
+ }
+-
+diff -r e64f75359064 modules/javafx.graphics/src/main/native-glass/gtk/launcher.c
+--- a/modules/javafx.graphics/src/main/native-glass/gtk/launcher.c	Tue Mar 26 04:38:34 2019 -0700
++++ b/modules/javafx.graphics/src/main/native-glass/gtk/launcher.c	Sat Jun 15 21:39:20 2019 -0400
+@@ -23,19 +23,23 @@
+  * questions.
+  */
+ 
++#include <fcntl.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#ifdef __linux__
+ #include <linux/fb.h>
+-#include <fcntl.h>
+-#ifndef __USE_GNU       // required for dladdr() & Dl_info
++#else
++#include <sys/fbio.h>
++#endif
++#ifndef __USE_GNU  // required for dladdr() & Dl_info
+ #define __USE_GNU
+ #endif
+ #include <dlfcn.h>
+ #include <sys/ioctl.h>
+ 
++#include <stdlib.h>
+ #include <string.h>
+ #include <strings.h>
+-#include <stdlib.h>
+ 
+ #include <X11/Xlib.h>
+ 
+@@ -47,135 +51,111 @@
+ 
+ static jboolean gtk_versionDebug = JNI_FALSE;
+ 
+-static const char * gtk2_chain[] = {
+-   "libglassgtk2.so", "libglassgtk3.so", 0
+-};
++static const char *gtk2_chain[] = {"libglassgtk2.so", "libglassgtk3.so", 0};
+ 
+-static const char * gtk3_chain[] = {
+-   "libglassgtk3.so", "libglassgtk2.so", 0
+-};
++static const char *gtk3_chain[] = {"libglassgtk3.so", "libglassgtk2.so", 0};
++
++static JavaVM *javaVM;
+ 
+-static JavaVM* javaVM;
++JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
++   (void)reserved;
+ 
+-JNIEXPORT jint JNICALL
+-JNI_OnLoad(JavaVM *jvm, void *reserved)
+-{
+-    (void) reserved;
++   javaVM = jvm;
+ 
+-    javaVM = jvm;
+-
+-    return JNI_VERSION_1_6;
++   return JNI_VERSION_1_6;
+ }
+ 
+ // our library combinations defined
+ // "version" "libgtk", "libdgdk", "libpixbuf"
+ // note that currently only the first char of the version is used
+-static char * gtk2_versioned[] = {
+-   "2", "libgtk-x11-2.0.so.0"
+-};
++static char *gtk2_versioned[] = {"2", "libgtk-x11-2.0.so.0"};
+ 
+-static char * gtk2_not_versioned[] = {
+-   "2", "libgtk-x11-2.0.so"
+-};
++static char *gtk2_not_versioned[] = {"2", "libgtk-x11-2.0.so"};
+ 
+-static char * gtk3_versioned[] = {
+-   "3", "libgtk-3.so.0"
+-};
++static char *gtk3_versioned[] = {"3", "libgtk-3.so.0"};
+ 
+-static char * gtk3_not_versioned[] = {
+-   "3", "libgtk-3.so"
+-};
++static char *gtk3_not_versioned[] = {"3", "libgtk-3.so"};
+ 
+ // our library set orders defined, null terminated
+-static char ** two_to_three[] = {
+-    gtk2_versioned, gtk2_not_versioned,
+-    gtk3_versioned, gtk3_not_versioned,
+-    0
+-};
++static char **two_to_three[] = {gtk2_versioned, gtk2_not_versioned,
++                                gtk3_versioned, gtk3_not_versioned, 0};
++
++static char **three_to_two[] = {gtk3_versioned, gtk3_not_versioned,
++                                gtk2_versioned, gtk2_not_versioned, 0};
+ 
+-static char ** three_to_two[] = {
+-    gtk3_versioned, gtk3_not_versioned,
+-    gtk2_versioned, gtk2_not_versioned,
+-    0
+-};
++static int try_opening_libraries(char *names[3]) {
++   void *gtk;
+ 
+-static int try_opening_libraries(char *names[3])
+-{
+-    void * gtk;
++   gtk = dlopen(names[1], RTLD_LAZY | RTLD_GLOBAL);
++   if (!gtk) {
++      return 0;
++   }
+ 
+-    gtk = dlopen (names[1], RTLD_LAZY | RTLD_GLOBAL);
+-    if (!gtk) {
+-        return 0;
+-    }
+-
+-    return 1;
++   return 1;
+ }
+ 
+-static int try_libraries_noload(char *names[3])
+-{
++static int try_libraries_noload(char *names[3]) {
+ #ifdef RTLD_NOLOAD
+-    void *gtk;
+-    gtk = dlopen(names[1], RTLD_LAZY | RTLD_NOLOAD);
+-    return gtk ? 1 : 0;
++   void *gtk;
++   gtk = dlopen(names[1], RTLD_LAZY | RTLD_NOLOAD);
++   return gtk ? 1 : 0;
+ #else
+-    return 0;
++   return 0;
+ #endif
+ }
+ 
+ static int sniffLibs(int wantVersion) {
++   if (gtk_versionDebug) {
++      printf("checking GTK version %d\n", wantVersion);
++   }
+ 
+-     if (gtk_versionDebug) {
+-         printf("checking GTK version %d\n",wantVersion);
+-     }
++   int success = 1;
++   char ***use_chain = three_to_two;
++   int i, found = 0;
+ 
+-     int success = 1;
+-     char *** use_chain = three_to_two;
+-     int i, found = 0;
+-
+-     //at first try to detect already loaded GTK version
+-     for (i = 0; use_chain[i] && !found; i++) {
+-        found = try_libraries_noload(use_chain[i]);
+-        if (found && gtk_versionDebug) {
+-            printf("found already loaded GTK library %s\n", use_chain[i][1]);
+-        }
+-     }
++   // at first try to detect already loaded GTK version
++   for (i = 0; use_chain[i] && !found; i++) {
++      found = try_libraries_noload(use_chain[i]);
++      if (found && gtk_versionDebug) {
++         printf("found already loaded GTK library %s\n", use_chain[i][1]);
++      }
++   }
+ 
+-     if (!found) {
+-         if (wantVersion == 0 || wantVersion == 3) {
+-             use_chain = three_to_two;
+-         } else if (wantVersion == 2) {
+-             use_chain = two_to_three;
+-         } else {
+-             // Note, this should never happen, java should be protecting us
+-             if (gtk_versionDebug) {
+-                 printf("bad GTK version specified, assuming 3\n");
+-             }
+-             wantVersion = 3;
+-             use_chain = three_to_two;
++   if (!found) {
++      if (wantVersion == 0 || wantVersion == 3) {
++         use_chain = three_to_two;
++      } else if (wantVersion == 2) {
++         use_chain = two_to_three;
++      } else {
++         // Note, this should never happen, java should be protecting us
++         if (gtk_versionDebug) {
++            printf("bad GTK version specified, assuming 3\n");
+          }
++         wantVersion = 3;
++         use_chain = three_to_two;
++      }
+ 
+-         for (i = 0; use_chain[i] && !found; i++) {
+-             if (gtk_versionDebug) {
+-                 printf("trying GTK library %s\n", use_chain[i][1]);
+-             }
+-             found = try_opening_libraries(use_chain[i]);
++      for (i = 0; use_chain[i] && !found; i++) {
++         if (gtk_versionDebug) {
++            printf("trying GTK library %s\n", use_chain[i][1]);
+          }
+-     }
++         found = try_opening_libraries(use_chain[i]);
++      }
++   }
+ 
+-    if (found) {
+-        if (gtk_versionDebug) {
+-            i--;
+-            printf("using GTK library version %s set %s\n",
+-                 use_chain[i][0],
+-                 use_chain[i][1]);
+-            fflush(stdout);
+-        }
+-        return use_chain[i][0][0];
+-    }
+-    if (gtk_versionDebug) {
+-        fflush(stdout);
+-    }
+-    return -1;
++   if (found) {
++      if (gtk_versionDebug) {
++         i--;
++         printf("using GTK library version %s set %s\n", use_chain[i][0],
++                use_chain[i][1]);
++         fflush(stdout);
++      }
++      return use_chain[i][0][0];
++   }
++   if (gtk_versionDebug) {
++      fflush(stdout);
++   }
++   return -1;
+ }
+ 
+ /*
+@@ -183,34 +163,32 @@
+  * Method:    _queryLibrary
+  * Signature: Signature: (IZ)I
+  */
+-JNIEXPORT jint JNICALL Java_com_sun_glass_ui_gtk_GtkApplication__1queryLibrary
+-  (JNIEnv *env, jclass clazz, jint suggestedVersion, jboolean verbose)
+-{
+-    (void) env;
+-    (void) clazz;
++JNIEXPORT jint JNICALL Java_com_sun_glass_ui_gtk_GtkApplication__1queryLibrary(
++    JNIEnv *env, jclass clazz, jint suggestedVersion, jboolean verbose) {
++   (void)env;
++   (void)clazz;
+ 
+-    gtk_versionDebug = verbose;
++   gtk_versionDebug = verbose;
+ 
+-    //Set the gtk backend to x11 on all the systems
+-    putenv("GDK_BACKEND=x11");
++   // Set the gtk backend to x11 on all the systems
++   putenv("GDK_BACKEND=x11");
+ 
+-    // Before doing anything with GTK we validate that the DISPLAY can be opened
+-    Display *display = XOpenDisplay(NULL);
+-    if (display == NULL) {
+-        return com_sun_glass_ui_gtk_GtkApplication_QUERY_NO_DISPLAY;
+-    }
+-    XCloseDisplay(display);
++   // Before doing anything with GTK we validate that the DISPLAY can be opened
++   Display *display = XOpenDisplay(NULL);
++   if (display == NULL) {
++      return com_sun_glass_ui_gtk_GtkApplication_QUERY_NO_DISPLAY;
++   }
++   XCloseDisplay(display);
+ 
+-    // now check the the presence of the libraries
++   // now check the the presence of the libraries
+ 
+-    char version = sniffLibs(suggestedVersion);
++   char version = sniffLibs(suggestedVersion);
+ 
+-    if (version == '2') {
+-        return com_sun_glass_ui_gtk_GtkApplication_QUERY_LOAD_GTK2;
+-    } else if (version == '3') {
+-        return com_sun_glass_ui_gtk_GtkApplication_QUERY_LOAD_GTK3;
+-    }
++   if (version == '2') {
++      return com_sun_glass_ui_gtk_GtkApplication_QUERY_LOAD_GTK2;
++   } else if (version == '3') {
++      return com_sun_glass_ui_gtk_GtkApplication_QUERY_LOAD_GTK3;
++   }
+ 
+-    return com_sun_glass_ui_gtk_GtkApplication_QUERY_ERROR;
++   return com_sun_glass_ui_gtk_GtkApplication_QUERY_ERROR;
+ }
+-
+diff -r e64f75359064 modules/javafx.graphics/src/main/native-glass/gtk/wrapped.c
+--- a/modules/javafx.graphics/src/main/native-glass/gtk/wrapped.c	Tue Mar 26 04:38:34 2019 -0700
++++ b/modules/javafx.graphics/src/main/native-glass/gtk/wrapped.c	Sat Jun 15 21:39:20 2019 -0400
+@@ -23,18 +23,22 @@
+  * questions.
+  */
+ 
++#include <fcntl.h>
+ #include <stdio.h>
++#ifdef __linux__
+ #include <linux/fb.h>
+-#include <fcntl.h>
+-#ifndef __USE_GNU       // required for dladdr() & Dl_info
++#else
++#include <sys/fbio.h>
++#endif
++#ifndef __USE_GNU  // required for dladdr() & Dl_info
+ #define __USE_GNU
+ #endif
+ #include <dlfcn.h>
+ #include <sys/ioctl.h>
+ 
+-#include <jni.h>
++#include <gdk/gdk.h>
+ #include <gtk/gtk.h>
+-#include <gdk/gdk.h>
++#include <jni.h>
+ 
+ #include "wrapped.h"
+ 
+@@ -46,105 +50,103 @@
+ 
+ // Note added in Glib 2.36 which is >= our OEL 7.0 version of 2.36
+ // but does not seem to be in the headers properly
+-static GSettingsSchemaSource * (*_g_settings_schema_source_get_default) (void);
++static GSettingsSchemaSource *(*_g_settings_schema_source_get_default)(void);
+ 
+-GSettingsSchemaSource * wrapped_g_settings_schema_source_get_default (void)
+-{
+-    if(_g_settings_schema_source_get_default == NULL) {
+-        _g_settings_schema_source_get_default = dlsym(RTLD_DEFAULT, "g_settings_schema_source_get_default");
+-        if (gtk_verbose && _g_settings_schema_source_get_default) {
+-            fprintf(stderr, "loaded g_settings_schema_source_get_default\n"); fflush(stderr);
+-        }
+-    }
++GSettingsSchemaSource *wrapped_g_settings_schema_source_get_default(void) {
++   if (_g_settings_schema_source_get_default == NULL) {
++      _g_settings_schema_source_get_default =
++          dlsym(RTLD_DEFAULT, "g_settings_schema_source_get_default");
++      if (gtk_verbose && _g_settings_schema_source_get_default) {
++         fprintf(stderr, "loaded g_settings_schema_source_get_default\n");
++         fflush(stderr);
++      }
++   }
+ 
+-    if(_g_settings_schema_source_get_default != NULL) {
+-        return (*_g_settings_schema_source_get_default)();
+-    }
++   if (_g_settings_schema_source_get_default != NULL) {
++      return (*_g_settings_schema_source_get_default)();
++   }
+ 
+-    return NULL;
++   return NULL;
+ }
+ 
+-
+ // Note added in Glib 2.36 which is >= our OEL 7.0 version of 2.36
+ // but does not seem to be in the headers properly
+-static GSettingsSchema *
+-  (*_g_settings_schema_source_lookup) (GSettingsSchemaSource *source,
+-                                 const gchar *schema_id,
+-                                 gboolean recursive);
++static GSettingsSchema *(*_g_settings_schema_source_lookup)(
++    GSettingsSchemaSource *source, const gchar *schema_id, gboolean recursive);
+ 
+-GSettingsSchema *
+-wrapped_g_settings_schema_source_lookup (GSettingsSchemaSource *source,
+-                                 const gchar *schema_id,
+-                                 gboolean recursive)
+-{
+-    if(_g_settings_schema_source_lookup == NULL) {
+-        _g_settings_schema_source_lookup = dlsym(RTLD_DEFAULT, "g_settings_schema_source_lookup");
+-        if (gtk_verbose && _g_settings_schema_source_lookup) {
+-            fprintf(stderr, "loaded g_settings_schema_source_lookup\n"); fflush(stderr);
+-        }
+-    }
++GSettingsSchema *wrapped_g_settings_schema_source_lookup(
++    GSettingsSchemaSource *source, const gchar *schema_id, gboolean recursive) {
++   if (_g_settings_schema_source_lookup == NULL) {
++      _g_settings_schema_source_lookup =
++          dlsym(RTLD_DEFAULT, "g_settings_schema_source_lookup");
++      if (gtk_verbose && _g_settings_schema_source_lookup) {
++         fprintf(stderr, "loaded g_settings_schema_source_lookup\n");
++         fflush(stderr);
++      }
++   }
+ 
+-    if(_g_settings_schema_source_lookup != NULL) {
+-        return (*_g_settings_schema_source_lookup)(source, schema_id, recursive);
+-    }
++   if (_g_settings_schema_source_lookup != NULL) {
++      return (*_g_settings_schema_source_lookup)(source, schema_id, recursive);
++   }
+ 
+-    return NULL;
++   return NULL;
+ }
+ 
+ // Note added in Glib 2.40 which is > our OEL 7.0 version of 2.36
+-static gboolean (*_g_settings_schema_has_key) (GSettingsSchema *schema, const gchar *name);
++static gboolean (*_g_settings_schema_has_key)(GSettingsSchema *schema,
++                                              const gchar *name);
+ 
+-gboolean wrapped_g_settings_schema_has_key (GSettingsSchema *schema,
+-                           const gchar *name)
+-{
+-    if(_g_settings_schema_has_key == NULL) {
+-        _g_settings_schema_has_key = dlsym(RTLD_DEFAULT, "g_settings_schema_has_key");
+-        if (gtk_verbose && _g_settings_schema_has_key) {
+-            fprintf(stderr, "loaded g_settings_schema_has_key\n"); fflush(stderr);
+-        }
+-    }
++gboolean wrapped_g_settings_schema_has_key(GSettingsSchema *schema,
++                                           const gchar *name) {
++   if (_g_settings_schema_has_key == NULL) {
++      _g_settings_schema_has_key =
++          dlsym(RTLD_DEFAULT, "g_settings_schema_has_key");
++      if (gtk_verbose && _g_settings_schema_has_key) {
++         fprintf(stderr, "loaded g_settings_schema_has_key\n");
++         fflush(stderr);
++      }
++   }
+ 
+-    if(_g_settings_schema_has_key != NULL) {
+-        return (*_g_settings_schema_has_key)(schema, name);
+-    }
++   if (_g_settings_schema_has_key != NULL) {
++      return (*_g_settings_schema_has_key)(schema, name);
++   }
+ 
+-    return 0;
++   return 0;
+ }
+ 
+-static void (*_g_settings_schema_unref) (GSettingsSchema *schema);
++static void (*_g_settings_schema_unref)(GSettingsSchema *schema);
+ 
+-void wrapped_g_settings_schema_unref (GSettingsSchema *schema)
+-{
+-    if(_g_settings_schema_unref == NULL) {
+-        _g_settings_schema_unref = dlsym(RTLD_DEFAULT, "g_settings_schema_unref");
+-        if (gtk_verbose && _g_settings_schema_unref) {
+-            fprintf(stderr, "loaded g_settings_schema_unref\n"); fflush(stderr);
+-        }
+-    }
++void wrapped_g_settings_schema_unref(GSettingsSchema *schema) {
++   if (_g_settings_schema_unref == NULL) {
++      _g_settings_schema_unref = dlsym(RTLD_DEFAULT, "g_settings_schema_unref");
++      if (gtk_verbose && _g_settings_schema_unref) {
++         fprintf(stderr, "loaded g_settings_schema_unref\n");
++         fflush(stderr);
++      }
++   }
+ 
+-    if(_g_settings_schema_unref != NULL) {
+-        (*_g_settings_schema_unref)(schema);
+-    }
+-
++   if (_g_settings_schema_unref != NULL) {
++      (*_g_settings_schema_unref)(schema);
++   }
+ }
+ 
+-static void (*_gdk_x11_display_set_window_scale) (GdkDisplay *display, gint scale);
++static void (*_gdk_x11_display_set_window_scale)(GdkDisplay *display,
++                                                 gint scale);
+ 
+ // Note added in libgdk 3.10 which is > our OEL 7.0 version of 3.8
+-void wrapped_gdk_x11_display_set_window_scale (GdkDisplay *display,
+-                                  gint scale)
+-{
++void wrapped_gdk_x11_display_set_window_scale(GdkDisplay *display, gint scale) {
+ #if GTK_CHECK_VERSION(3, 0, 0)
+-    if(_gdk_x11_display_set_window_scale == NULL) {
+-        _gdk_x11_display_set_window_scale = dlsym(RTLD_DEFAULT, "gdk_x11_display_set_window_scale");
+-        if (gtk_verbose && _gdk_x11_display_set_window_scale) {
+-            fprintf(stderr, "loaded gdk_x11_display_set_window_scale\n"); fflush(stderr);
+-        }
+-    }
++   if (_gdk_x11_display_set_window_scale == NULL) {
++      _gdk_x11_display_set_window_scale =
++          dlsym(RTLD_DEFAULT, "gdk_x11_display_set_window_scale");
++      if (gtk_verbose && _gdk_x11_display_set_window_scale) {
++         fprintf(stderr, "loaded gdk_x11_display_set_window_scale\n");
++         fflush(stderr);
++      }
++   }
+ #endif
+ 
+-    if(_gdk_x11_display_set_window_scale != NULL) {
+-        (*_gdk_x11_display_set_window_scale)(display, scale);
+-    }
++   if (_gdk_x11_display_set_window_scale != NULL) {
++      (*_gdk_x11_display_set_window_scale)(display, scale);
++   }
+ }
+-
+diff -r e64f75359064 modules/javafx.graphics/src/main/native-prism-es2/PrismES2Defs.h
+--- a/modules/javafx.graphics/src/main/native-prism-es2/PrismES2Defs.h	Tue Mar 26 04:38:34 2019 -0700
++++ b/modules/javafx.graphics/src/main/native-prism-es2/PrismES2Defs.h	Sat Jun 15 21:39:20 2019 -0400
+@@ -26,7 +26,8 @@
+ #ifndef _Prism_es2_defs_h_
+ #define _Prism_es2_defs_h_
+ 
+-#if defined(SOLARIS) || defined(LINUX) || defined(ANDROID_NDK) /* SOLARIS || LINUX */
++#if defined(SOLARIS) || defined(LINUX) || defined(__FreeBSD__) || \
++    defined(ANDROID_NDK) /* SOLARIS || LINUX */
+ #define GLX_GLEXT_PROTOTYPES
+ #define GLX_GLXEXT_PROTOTYPES
+ #define UNIX
+@@ -39,10 +40,10 @@
+ #include <limits.h>
+ 
+ #ifndef ANDROID_NDK
++#include <GL/glx.h>
+ #include <X11/X.h>
+ #include <X11/Xlib.h>
+ #include <X11/Xutil.h>
+-#include <GL/glx.h>
+ #endif
+ 
+ #include <GL/gl.h>
+@@ -53,11 +54,11 @@
+ #endif
+ #include <dlfcn.h>
+ 
+-#define jlong_to_ptr(value) ((void*)((long)value))
++#define jlong_to_ptr(value) ((void *)((long)value))
+ #define ptr_to_jlong(value) (jlong)((long)(value))
+ 
+ /* Max lenght of value, attr pair plus a None */
+-#define  MAX_GLX_ATTRS_LENGTH 50
++#define MAX_GLX_ATTRS_LENGTH 50
+ 
+ #ifdef IS_EGL
+ #include <EGL/egl.h>
+@@ -82,8 +83,8 @@
+ /* Include the OpenGL headers */
+ #include <GL/gl.h>
+ #include <GL/glext.h>
++#include <OpenGL/CGLTypes.h>
+ #include <OpenGL/OpenGL.h>
+-#include <OpenGL/CGLTypes.h>
+ #include "macosx-window-system.h"
+ 
+ /* Max length of value, attr pair plus a None */
+@@ -92,10 +93,10 @@
+ #endif /* __APPLE__ */
+ 
+ #ifdef WIN32 /* WIN32 */
++#include <GL/gl.h>
++#include <GL/glext.h>
++#include <GL/wglext.h>
+ #include <windows.h>
+-#include <GL/gl.h>
+-#include <GL/wglext.h>
+-#include <GL/glext.h>
+ 
+ #ifndef _WIN32_WINNT
+ #define _WIN32_WINNT 0x0500
+@@ -116,30 +117,32 @@
+ /*
+  * These match the constants in GLPixelFormat
+  */
+-#define RED_SIZE        com_sun_prism_es2_GLPixelFormat_Attributes_RED_SIZE
+-#define GREEN_SIZE      com_sun_prism_es2_GLPixelFormat_Attributes_GREEN_SIZE
+-#define BLUE_SIZE       com_sun_prism_es2_GLPixelFormat_Attributes_BLUE_SIZE
+-#define ALPHA_SIZE      com_sun_prism_es2_GLPixelFormat_Attributes_ALPHA_SIZE
+-#define DEPTH_SIZE      com_sun_prism_es2_GLPixelFormat_Attributes_DEPTH_SIZE
+-#define DOUBLEBUFFER    com_sun_prism_es2_GLPixelFormat_Attributes_DOUBLEBUFFER
+-#define ONSCREEN        com_sun_prism_es2_GLPixelFormat_Attributes_ONSCREEN
+-#define NUM_ITEMS       com_sun_prism_es2_GLPixelFormat_Attributes_NUM_ITEMS
++#define RED_SIZE com_sun_prism_es2_GLPixelFormat_Attributes_RED_SIZE
++#define GREEN_SIZE com_sun_prism_es2_GLPixelFormat_Attributes_GREEN_SIZE
++#define BLUE_SIZE com_sun_prism_es2_GLPixelFormat_Attributes_BLUE_SIZE
++#define ALPHA_SIZE com_sun_prism_es2_GLPixelFormat_Attributes_ALPHA_SIZE
++#define DEPTH_SIZE com_sun_prism_es2_GLPixelFormat_Attributes_DEPTH_SIZE
++#define DOUBLEBUFFER com_sun_prism_es2_GLPixelFormat_Attributes_DOUBLEBUFFER
++#define ONSCREEN com_sun_prism_es2_GLPixelFormat_Attributes_ONSCREEN
++#define NUM_ITEMS com_sun_prism_es2_GLPixelFormat_Attributes_NUM_ITEMS
+ 
+ #ifdef ANDROID_NDK
+ 
+ #include "com_sun_prism_es2_GLPixelFormat_Attributes.h"
+ 
+ typedef EGLNativeDisplayType Display;
+-typedef EGLNativeWindowType  Window;
+-typedef EGLConfig            GLXFBConfig;
+-typedef unsigned long        Colormap;
+-typedef unsigned long        PFNGLXSWAPINTERVALSGIPROC;
++typedef EGLNativeWindowType Window;
++typedef EGLConfig GLXFBConfig;
++typedef unsigned long Colormap;
++typedef unsigned long PFNGLXSWAPINTERVALSGIPROC;
+ 
+ #include <android/log.h>
+ #include <string.h>
+ #define TAG "javafx"
+-#define printf(...) ((void)__android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__))
+-#define fprintf(IGNORE, ...) ((void)__android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__))
++#define printf(...) \
++   ((void)__android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__))
++#define fprintf(IGNORE, ...) \
++   ((void)__android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__))
+ #endif
+ 
+ /* Typedef for pixelformat properties struct */
+@@ -148,21 +151,21 @@
+ /* define the structure to hold the resources and proerties of pixelformat */
+ struct PixelFormatInfoRec {
+ #ifdef WIN32 /* WIN32 */
+-    int pixelFormat;
+-    HWND dummyHwnd;
+-    HDC dummyHdc;
+-    LPCTSTR dummySzAppName;
++   int pixelFormat;
++   HWND dummyHwnd;
++   HDC dummyHdc;
++   LPCTSTR dummySzAppName;
+ #endif /* WIN32 */
+ 
+ #ifdef UNIX /* LINUX || SOLARIS */
+-    Display *display;
+-    GLXFBConfig fbConfig;
+-    Window dummyWin;
+-    Colormap dummyCmap;
++   Display *display;
++   GLXFBConfig fbConfig;
++   Window dummyWin;
++   Colormap dummyCmap;
+ #endif
+ 
+ #ifdef MACOSX /* MACOSX */
+-    jlong pixelFormat;
++   jlong pixelFormat;
+ #endif
+ };
+ 
+@@ -171,26 +174,26 @@
+ 
+ /* define the structure to hold the resources and proerties of drawable */
+ struct DrawableInfoRec {
+-    jboolean onScreen;
++   jboolean onScreen;
+ 
+ #ifdef WIN32 /* WIN32 */
+-    HDC hdc;
+-    HWND hwnd;
++   HDC hdc;
++   HWND hwnd;
+ #endif /* WIN32 */
+ 
+ #ifdef UNIX /* LINUX || SOLARIS */
+ #ifdef IS_EGL
+-    EGLDisplay *egldisplay;
+-    EGLSurface eglsurface;
++   EGLDisplay *egldisplay;
++   EGLSurface eglsurface;
+ #endif
+ #ifndef IS_EGLFB
+-    Display *display;
+-    Window win;
++   Display *display;
++   Window win;
+ #endif
+ #endif
+ 
+ #ifdef __APPLE__
+-    jlong win;
++   jlong win;
+ #endif /* __APPLE__ */
+ };
+ 
+@@ -199,19 +202,19 @@
+ 
+ /* define the structure to hold the states of context */
+ struct StateInfoRec {
+-    /* For state caching */
+-    jboolean depthWritesEnabled;
+-    jboolean scissorEnabled;
+-    GLclampf clearColor[4];
+-    jboolean vSyncEnabled;
++   /* For state caching */
++   jboolean depthWritesEnabled;
++   jboolean scissorEnabled;
++   GLclampf clearColor[4];
++   jboolean vSyncEnabled;
+ 
+-    /* For 3d state caching */
+-    GLboolean cullEnable;
+-    GLenum cullMode;
+-    GLenum fillMode;
++   /* For 3d state caching */
++   GLboolean cullEnable;
++   GLenum cullMode;
++   GLenum fillMode;
+ 
+-    /* Currently bound fbo */
+-    GLuint fbo;
++   /* Currently bound fbo */
++   GLuint fbo;
+ };
+ 
+ /* Typedef for context properties struct */
+@@ -220,120 +223,121 @@
+ /* define the structure to hold the properties of graphics context */
+ struct ContextInfoRec {
+ #ifdef WIN32 /* WIN32 */
+-    HGLRC hglrc;
++   HGLRC hglrc;
+ #endif /* WIN32 */
+ 
+ #ifdef UNIX /* LINUX || SOLARIS */
+-    Display *display;
++   Display *display;
+ #ifdef IS_EGL
+-    EGLContext context;
+-    EGLDisplay *egldisplay;
+-    EGLSurface eglsurface;
++   EGLContext context;
++   EGLDisplay *egldisplay;
++   EGLSurface eglsurface;
+ #else
+-     GLXContext context;
++   GLXContext context;
+ #endif
+ 
+-#if defined(IS_GLX) || defined( IS_EGLX11)
+-    /*
+-     * display screen and visualID are cached
+-     * for Factory to pass to Glass
+-     */
+-    int screen;
+-    int visualID;
++#if defined(IS_GLX) || defined(IS_EGLX11)
++   /*
++    * display screen and visualID are cached
++    * for Factory to pass to Glass
++    */
++   int screen;
++   int visualID;
+ #endif
+ #endif
+ 
+ #ifdef __APPLE__
+-    jlong context;
++   jlong context;
+ #endif /* __APPLE__ */
+ 
+-    /* version and extension info */
+-    char *versionStr;
+-    char *vendorStr;
+-    char *rendererStr;
+-    char *glExtensionStr;
+-    int versionNumbers[2];
++   /* version and extension info */
++   char *versionStr;
++   char *vendorStr;
++   char *rendererStr;
++   char *glExtensionStr;
++   int versionNumbers[2];
+ 
+-    /* platform specific extension string and function pointers */
++   /* platform specific extension string and function pointers */
+ #ifdef WIN32 /* WIN32 */
+-    char *wglExtensionStr;
+-    PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
++   char *wglExtensionStr;
++   PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
+ #endif /* WIN32 */
+ 
+ #ifdef UNIX /* LINUX || SOLARIS */
+-    char *glxExtensionStr;
+-    PFNGLXSWAPINTERVALSGIPROC glXSwapIntervalSGI;
++   char *glxExtensionStr;
++   PFNGLXSWAPINTERVALSGIPROC glXSwapIntervalSGI;
+ #endif /* LINUX || SOLARIS */
+ 
+-    /* gl function pointers */
+-    PFNGLACTIVETEXTUREPROC glActiveTexture;
+-    PFNGLATTACHSHADERPROC glAttachShader;
+-    PFNGLBINDATTRIBLOCATIONPROC glBindAttribLocation;
+-    PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
+-    PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer;
+-    PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
+-    PFNGLCOMPILESHADERPROC glCompileShader;
+-    PFNGLCREATEPROGRAMPROC glCreateProgram;
+-    PFNGLCREATESHADERPROC glCreateShader;
+-    PFNGLDELETEBUFFERSPROC glDeleteBuffers;
+-    PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
+-    PFNGLDELETEPROGRAMPROC glDeleteProgram;
+-    PFNGLDELETESHADERPROC glDeleteShader;
+-    PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
+-    PFNGLDETACHSHADERPROC glDetachShader;
+-    PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+-    PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+-    PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
+-    PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
+-    PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers;
+-    PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers;
+-    PFNGLGETPROGRAMIVPROC glGetProgramiv;
+-    PFNGLGETSHADERIVPROC glGetShaderiv;
+-    PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+-    PFNGLLINKPROGRAMPROC glLinkProgram;
+-    PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
+-    PFNGLSHADERSOURCEPROC glShaderSource;
+-    PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
+-    PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
+-    PFNGLBUFFERSUBDATAPROC glBufferSubData;
+-    PFNGLUNIFORM1FPROC glUniform1f;
+-    PFNGLUNIFORM2FPROC glUniform2f;
+-    PFNGLUNIFORM3FPROC glUniform3f;
+-    PFNGLUNIFORM4FPROC glUniform4f;
+-    PFNGLUNIFORM4FVPROC glUniform4fv;
+-    PFNGLUNIFORM1IPROC glUniform1i;
+-    PFNGLUNIFORM2IPROC glUniform2i;
+-    PFNGLUNIFORM3IPROC glUniform3i;
+-    PFNGLUNIFORM4IPROC glUniform4i;
+-    PFNGLUNIFORM4IVPROC glUniform4iv;
+-    PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+-    PFNGLUSEPROGRAMPROC glUseProgram;
+-    PFNGLVALIDATEPROGRAMPROC glValidateProgram;
+-    PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
++   /* gl function pointers */
++   PFNGLACTIVETEXTUREPROC glActiveTexture;
++   PFNGLATTACHSHADERPROC glAttachShader;
++   PFNGLBINDATTRIBLOCATIONPROC glBindAttribLocation;
++   PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
++   PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer;
++   PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
++   PFNGLCOMPILESHADERPROC glCompileShader;
++   PFNGLCREATEPROGRAMPROC glCreateProgram;
++   PFNGLCREATESHADERPROC glCreateShader;
++   PFNGLDELETEBUFFERSPROC glDeleteBuffers;
++   PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
++   PFNGLDELETEPROGRAMPROC glDeleteProgram;
++   PFNGLDELETESHADERPROC glDeleteShader;
++   PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
++   PFNGLDETACHSHADERPROC glDetachShader;
++   PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
++   PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
++   PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
++   PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
++   PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers;
++   PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers;
++   PFNGLGETPROGRAMIVPROC glGetProgramiv;
++   PFNGLGETSHADERIVPROC glGetShaderiv;
++   PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
++   PFNGLLINKPROGRAMPROC glLinkProgram;
++   PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
++   PFNGLSHADERSOURCEPROC glShaderSource;
++   PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
++   PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
++   PFNGLBUFFERSUBDATAPROC glBufferSubData;
++   PFNGLUNIFORM1FPROC glUniform1f;
++   PFNGLUNIFORM2FPROC glUniform2f;
++   PFNGLUNIFORM3FPROC glUniform3f;
++   PFNGLUNIFORM4FPROC glUniform4f;
++   PFNGLUNIFORM4FVPROC glUniform4fv;
++   PFNGLUNIFORM1IPROC glUniform1i;
++   PFNGLUNIFORM2IPROC glUniform2i;
++   PFNGLUNIFORM3IPROC glUniform3i;
++   PFNGLUNIFORM4IPROC glUniform4i;
++   PFNGLUNIFORM4IVPROC glUniform4iv;
++   PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
++   PFNGLUSEPROGRAMPROC glUseProgram;
++   PFNGLVALIDATEPROGRAMPROC glValidateProgram;
++   PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+ 
+-    PFNGLGENBUFFERSPROC glGenBuffers;
+-    PFNGLBINDBUFFERPROC glBindBuffer;
+-    PFNGLBUFFERDATAPROC glBufferData;
+-    PFNGLTEXIMAGE2DMULTISAMPLEPROC glTexImage2DMultisample;
+-    PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC glRenderbufferStorageMultisample;
+-    PFNGLBLITFRAMEBUFFERPROC glBlitFramebuffer;
++   PFNGLGENBUFFERSPROC glGenBuffers;
++   PFNGLBINDBUFFERPROC glBindBuffer;
++   PFNGLBUFFERDATAPROC glBufferData;
++   PFNGLTEXIMAGE2DMULTISAMPLEPROC glTexImage2DMultisample;
++   PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC glRenderbufferStorageMultisample;
++   PFNGLBLITFRAMEBUFFERPROC glBlitFramebuffer;
+ 
+-    /* For state caching */
+-    StateInfo state;
++   /* For state caching */
++   StateInfo state;
+ 
+-    /* this pointers represent cached values of glVertexAttribPointer values */
+-    /* they should be properly updated in case of glVertexAttribPointer call */
+-    /* see setVertexAttributePointers */
+-    float *vbFloatData;
+-    char  *vbByteData;
+-    jboolean gl2;
++   /* this pointers represent cached values of glVertexAttribPointer values */
++   /* they should be properly updated in case of glVertexAttribPointer call */
++   /* see setVertexAttributePointers */
++   float *vbFloatData;
++   char *vbByteData;
++   jboolean gl2;
+ 
+-    /* Caching properties passed down from Java */
+-    jboolean vSyncRequested;
++   /* Caching properties passed down from Java */
++   jboolean vSyncRequested;
+ };
+ 
+ // extern declarations for core functions
+-extern int isExtensionSupported(const char *allExtensions, const char *extension);
++extern int isExtensionSupported(const char *allExtensions,
++                                const char *extension);
+ extern void extractVersionInfo(char *versionStr, int *numbers);
+ extern void initializeCtxInfo(ContextInfo *ctxInfo);
+ extern void initializePixelFormatInfo(PixelFormatInfo *pfInfo);
+@@ -341,14 +345,14 @@
+ extern void deletePixelFormatInfo(PixelFormatInfo *pfInfo);
+ 
+ /* Define 3D Primitive data type */
+-/* define constants and structures to hold the resources of 3D primitive and rendering
+- * attributes */
++/* define constants and structures to hold the resources of 3D primitive and
++ * rendering attributes */
+ #define VC_3D_INDEX 0
+ #define TC_3D_INDEX 1
+ #define NC_3D_INDEX 2
+-#define VC_3D_SIZE 3  /* x, y, z */
+-#define TC_3D_SIZE 2  /* tu, tv */
+-#define NC_3D_SIZE 4  /* nx, ny, nz, nw */
++#define VC_3D_SIZE 3 /* x, y, z */
++#define TC_3D_SIZE 2 /* tu, tv */
++#define NC_3D_SIZE 4 /* nx, ny, nz, nw */
+ #define VERT_3D_SIZE (VC_3D_SIZE + TC_3D_SIZE + NC_3D_SIZE)
+ #define VERT_3D_STRIDE (sizeof(GLfloat) * VERT_3D_SIZE)
+ 
+@@ -358,42 +362,41 @@
+ 
+ typedef struct MeshInfoRec MeshInfo;
+ struct MeshInfoRec {
+-    // vboIDArray[MESH_VERTEXBUFFER] used to store interleave points and tex. coords.
+-    // vboIDArray[MESH_INDEXBUFFER] used to store element indices
+-    GLuint vboIDArray[MESH_MAX_BUFFERS];
+-    GLuint indexBufferSize;
+-    GLenum indexBufferType;
++   // vboIDArray[MESH_VERTEXBUFFER] used to store interleave points and tex.
++   // coords. vboIDArray[MESH_INDEXBUFFER] used to store element indices
++   GLuint vboIDArray[MESH_MAX_BUFFERS];
++   GLuint indexBufferSize;
++   GLenum indexBufferType;
+ };
+ 
+ typedef struct PhongMaterialInfoRec PhongMaterialInfo;
+ struct PhongMaterialInfoRec {
+-   GLfloat diffuseColor[4]; // in the order of rgba
++   GLfloat diffuseColor[4];  // in the order of rgba
+    GLuint maps[4];
+ };
+ 
+ typedef struct MeshViewInfoRec MeshViewInfo;
+ struct MeshViewInfoRec {
+-    MeshInfo *meshInfo;
+-    PhongMaterialInfo *phongMaterialInfo;
+-    GLfloat ambientLightColor[3];
+-    GLuint pointLightIndex;
+-    GLfloat pointLightWeight;
+-    GLfloat pointLightPosition[3];
+-    GLfloat pointLightColor[3];
+-    GLboolean cullEnable;
+-    GLenum cullMode;
+-    GLenum fillMode;
++   MeshInfo *meshInfo;
++   PhongMaterialInfo *phongMaterialInfo;
++   GLfloat ambientLightColor[3];
++   GLuint pointLightIndex;
++   GLfloat pointLightWeight;
++   GLfloat pointLightPosition[3];
++   GLfloat pointLightColor[3];
++   GLboolean cullEnable;
++   GLenum cullMode;
++   GLenum fillMode;
+ };
+ 
+ /*
+  * General purpose assertion macro
+  */
+-#define PRISMES2_ASSERT(expr) \
+-    if (!(expr)) { \
+-        fprintf(stderr, \
+-            "\nAssertion failed in module '%s' at line %d\n", \
+-            __FILE__, __LINE__); \
+-        fprintf(stderr, "\t%s\n\n", #expr);     \
+-    }
++#define PRISMES2_ASSERT(expr)                                           \
++   if (!(expr)) {                                                       \
++      fprintf(stderr, "\nAssertion failed in module '%s' at line %d\n", \
++              __FILE__, __LINE__);                                      \
++      fprintf(stderr, "\t%s\n\n", #expr);                               \
++   }
+ 
+ #endif /* _Prism_es2_defs_h_ */
