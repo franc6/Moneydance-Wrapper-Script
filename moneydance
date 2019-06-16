@@ -1,0 +1,105 @@
+#!/usr/local/bin/zsh
+# Copyright 2014 - 2019 Thomas J. Francis, Jr.
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its contributors
+# may be used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+ALLOWEDUSER="franc"
+BACKUPBASE="/mnt/backup/Quicken/"
+DATAFILE="QData.moneydance"
+DATADIR="/home/franc/.moneydance/Documents/${DATAFILE}"
+
+DATE=`/bin/date +%Y-%m-%d`
+BACKUPDIR="${BACKUPBASE}/${DATAFILE}-${DATE}"
+
+# Don't let anyone but franc run this script!
+if test `id -un` != ${ALLOWEDUSER} ; then
+	echo "You must run this as franc, or the Dropbox sync will fail!"
+	exit 1
+fi
+
+BACKTITLE="Tom's Moneydance Wrapper Script"
+# Synchronize from Dropbox
+/usr/local/bin/dropbox-api sync -v -d dropbox:/.moneydancesync /home/franc/Dropbox/.moneydancesync 2>&1 | /usr/bin/dialog --backtitle "${BACKTITLE}" --title "Synchronize from Dropbox" --progressbox 15 78
+
+# Run Moneydance, setting JAVA_HOME.
+# On first-run of moneydance, INSTALL4J_JAVA_HOME might need to be set
+#INSTALL4J_JAVA_HOME=/usr/local/openjdk12 JAVA_HOME=/usr/local/openjdk12 /usr/local/bin/bash /usr/local/Moneydance/Moneydance
+JAVA_HOME=/usr/local/openjdk12 /usr/local/bin/bash /usr/local/Moneydance.2017.8/Moneydance
+#JAVA_HOME=/usr/local/openjdk8/jre /usr/compat/linux/bin/sh /usr/local/Moneydance.2017.8/Moneydance
+
+# Synchronize to Dropbox
+/usr/local/bin/dropbox-api sync -v -d /home/franc/Dropbox/.moneydancesync dropbox:/.moneydancesync 2>&1 | /usr/bin/dialog --backtitle "${BACKTITLE}" --title "Synchronize to Dropbox" --progressbox 15 78 ; sleep 1
+
+# Backup
+DOBACKUP=0
+
+# Remove all but the last 5 backups
+WD=`pwd`
+cd ${BACKUPBASE}
+COUNT=`/bin/ls | /usr/bin/grep ${DATAFILE}- | /usr/bin/wc -l`
+if test ${=COUNT} -gt 5 ; then
+	COUNT=`/bin/expr ${=COUNT} - 5`
+	DELLIST=`/bin/ls | /usr/bin/grep ${DATAFILE}- | /usr/bin/sort | /usr/bin/head -n ${COUNT}`
+	(echo "/bin/rm -rf ${DELLIST}"; /bin/rm -rf ${=DELLIST}) 2>&1 | /usr/bin/dialog --backtitle "${BACKTITLE}" --title "Removing Old Backups" --progressbox 15 78
+fi
+cd ${WD}
+
+/usr/bin/dialog --backtitle "${BACKTITLE}" --yesno "Do you want to backup Moneydance now?" 5 41
+
+# If the user answered yes to backup, check if the backup already exists or not
+if test $? -eq 0 ; then
+	if test -f ${BACKUPDIR} -o -d ${BACKUPDIR} ; then
+		# Ask if user wants to overwrite
+		/usr/bin/dialog --backtitle "${BACKTITLE}" --yesno "Do you want to overwrite the existing backup?" 5 50
+		if test $? -eq 0 ; then
+			# User wants to overwrite, so remove the old, and
+			# set DOBACKUP=1
+			/bin/rm -rf ${BACKUPDIR}
+			DOBACKUP=1
+		fi
+	else
+		# Backup doesn't exist, so just set DOBACKUP=1
+		DOBACKUP=1
+	fi
+fi
+
+echo
+
+# Do the backup of the user said yes
+if test ${DOBACKUP} -eq 1 ; then
+	SIZE=`/usr/bin/du -s ${DATADIR} | /usr/bin/awk '{print $1 * 1024}'`
+	/bin/mkdir -p ${BACKUPDIR}
+	/usr/bin/tar -C ${DATADIR} -cf - . | /usr/bin/dpv -b "${BACKTITLE}" -t "Backup" -x "/usr/bin/tar -C ${BACKUPDIR} -xf -" ${SIZE}:"${BACKUPDIR}"
+	if test ${pipestatus[1]} -eq 0 -a ${pipestatus[2]} -eq 0; then
+		echo "*** Backup complete! ***"
+	else
+		echo
+		echo "*** Backup FAILED! ***"
+	fi
+else
+	echo "*** No backup! ***"
+fi
+
