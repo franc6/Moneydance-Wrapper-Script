@@ -32,3 +32,5 @@ All of the dependencies are either part of the base FreeBSD system, or can be in
 6. OpenJFX (this one isn't in ports)
 
 OK, so installing openjdk12 for use with Moneydance is NOT simple, because you also need to install OpenJFX.  Don't forget to build and install java/openjdk12 before trying to build OpenJFX.  Yes, you have to build it twice!  There are instructions at https://wiki.openjdk.java.net/display/OpenJFX/Building+OpenJFX, but it's not quite quite right for FreeBSD.  You can use the patch openjfx.patch to patch OpenJFX for building on FreeBSD, then follow the instructions for Linux, until you get to "Integration with OpenJDK".  Once you reach that point, you have modify /usr/ports/java/openjdk12/Makefile, so it knows where to find the OpenJFX modules.  Simply add "--with-import-modules=/home/me/openjfx/rt/build/modular-sdk" to CONFIGURE_ARGS, then run "make clean ; make && make deinstall && make reinstall" in the /usr/ports/java/openjdk12 directory to rebuild and re-install OpenJDK 12.
+
+[![Buy me some pizza](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/qpunYPZx5)
